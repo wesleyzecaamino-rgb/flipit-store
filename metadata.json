@@ -1,0 +1,8 @@
+{
+  "name": "OVRA — Every Workout",
+  "description": "FLIPiT store , high quality clothing suited for every ocasion , seasons and individual style preferences, featuring an easy-to-navigate mobile interface.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

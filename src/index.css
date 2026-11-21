@@ -1,0 +1,11 @@
+@import "tailwindcss";
+
+/* Preserve exact hero athlete cut-out overflow width against Tailwind Preflight img max-width */
+.hero-athlete {
+  max-width: none;
+}
+
+/* Storefront modal & drawer font inheritance */
+#store-root {
+  font-family: 'Archivo', system-ui, -apple-system, 'Segoe UI', sans-serif;
+}

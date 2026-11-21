@@ -1,0 +1,185 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Pillar 4.1: Default-deny global safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Phase 3: Global Security Primitives
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidCategory(cat) {
+      return cat is string && cat in ['MEN', 'WOMEN', 'SEASONAL', 'ACCESSORIES'];
+    }
+
+    function isValidSize(sz) {
+      return sz is string && sz in ['XS', 'S', 'M', 'L', 'XL', 'OS'];
+    }
+
+    // Entity Validation Blueprints (Pillar 2)
+    function isValidUserProfile(data, userId) {
+      return data.keys().hasAll(['uid', 'displayName', 'email', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'displayName', 'email', 'photoURL', 'emailSeasonalDrops', 'createdAt', 'updatedAt'])
+        && data.uid is string && data.uid == userId && data.uid == request.auth.uid && data.uid.size() <= 128
+        && data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 100
+        && data.email is string && data.email.size() >= 3 && data.email.size() <= 200
+        && (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() <= 500))
+        && (!('emailSeasonalDrops' in data) || data.emailSeasonalDrops is bool)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidCartItem(data, itemId, userId) {
+      return data.keys().hasAll(['itemId', 'productId', 'title', 'category', 'colorway', 'size', 'priceCents', 'quantity', 'ownerId', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['itemId', 'productId', 'title', 'category', 'colorway', 'size', 'priceCents', 'quantity', 'ownerId', 'createdAt', 'updatedAt'])
+        && data.itemId is string && data.itemId == itemId && isValidId(data.itemId)
+        && data.productId is string && data.productId.size() <= 64 && isValidId(data.productId)
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 120
+        && isValidCategory(data.category)
+        && data.colorway is string && data.colorway.size() >= 1 && data.colorway.size() <= 60
+        && isValidSize(data.size)
+        && data.priceCents is int && data.priceCents >= 100 && data.priceCents <= 500000
+        && data.quantity is int && data.quantity >= 1 && data.quantity <= 20
+        && data.ownerId is string && data.ownerId == userId && data.ownerId == request.auth.uid
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidWishlistItem(data, productId, userId) {
+      return data.keys().hasAll(['productId', 'title', 'priceCents', 'ownerId', 'createdAt'])
+        && data.keys().hasOnly(['productId', 'title', 'priceCents', 'ownerId', 'createdAt'])
+        && data.productId is string && data.productId == productId && data.productId.size() <= 64 && isValidId(data.productId)
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 120
+        && data.priceCents is int && data.priceCents >= 100 && data.priceCents <= 500000
+        && data.ownerId is string && data.ownerId == userId && data.ownerId == request.auth.uid
+        && data.createdAt is timestamp;
+    }
+
+    function isValidOrder(data, orderId) {
+      return data.keys().hasAll(['orderId', 'userId', 'customerName', 'customerEmail', 'shippingAddress', 'status', 'totalCents', 'itemsCount', 'items', 'createdAt'])
+        && data.keys().hasOnly(['orderId', 'userId', 'customerName', 'customerEmail', 'shippingAddress', 'status', 'totalCents', 'itemsCount', 'items', 'createdAt'])
+        && data.orderId is string && data.orderId == orderId && isValidId(data.orderId)
+        && data.userId is string && data.userId == request.auth.uid && data.userId.size() <= 128
+        && data.customerName is string && data.customerName.size() >= 1 && data.customerName.size() <= 100
+        && data.customerEmail is string && data.customerEmail.size() >= 3 && data.customerEmail.size() <= 200
+        && data.shippingAddress is string && data.shippingAddress.size() >= 5 && data.shippingAddress.size() <= 240
+        && data.status is string && data.status in ['processing', 'shipped', 'delivered', 'confirmed', 'preparing'] && data.status.size() <= 24
+        && data.totalCents is int && data.totalCents >= 100 && data.totalCents <= 5000000
+        && data.itemsCount is int && data.itemsCount >= 1 && data.itemsCount <= 50
+        && data.items is list && data.items.size() >= 1 && data.items.size() <= 20
+        && data.items[0] is map
+        && data.items[0].keys().hasAll(['productId', 'title', 'size', 'priceCents', 'quantity'])
+        && data.items[0].keys().hasOnly(['productId', 'title', 'size', 'priceCents', 'quantity'])
+        && data.items[0].productId is string && data.items[0].productId.size() >= 1 && data.items[0].productId.size() <= 64
+        && data.items[0].title is string && data.items[0].title.size() >= 1 && data.items[0].title.size() <= 120
+        && isValidSize(data.items[0].size)
+        && data.items[0].priceCents is int && data.items[0].priceCents >= 100 && data.items[0].priceCents <= 500000
+        && data.items[0].quantity is int && data.items[0].quantity >= 1 && data.items[0].quantity <= 20
+        && data.createdAt is timestamp;
+    }
+
+    // Collection: /users/{userId} (PII strictly owner-only)
+    match /users/{userId} {
+      allow get: if isValidId(userId) && isOwner(userId);
+      allow list: if false;
+      allow create: if isValidId(userId)
+        && isVerified()
+        && isOwner(userId)
+        && isValidUserProfile(incoming(), userId)
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(userId)
+        && isVerified()
+        && isOwner(userId)
+        && isValidUserProfile(incoming(), userId)
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'email', 'photoURL', 'emailSeasonalDrops', 'updatedAt']);
+      allow delete: if false;
+
+      // Subcollection: /users/{userId}/cart/{itemId}
+      match /cart/{itemId} {
+        allow get: if isValidId(userId) && isValidId(itemId) && isOwner(userId);
+        allow list: if isValidId(userId) && isOwner(userId) && existing().ownerId == request.auth.uid;
+        allow create: if isValidId(userId)
+          && isValidId(itemId)
+          && isVerified()
+          && isOwner(userId)
+          && isValidCartItem(incoming(), itemId, userId)
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time
+          && exists(/databases/$(database)/documents/users/$(userId));
+        allow update: if isValidId(userId)
+          && isValidId(itemId)
+          && isVerified()
+          && isOwner(userId)
+          && isValidCartItem(incoming(), itemId, userId)
+          && incoming().itemId == existing().itemId
+          && incoming().productId == existing().productId
+          && incoming().title == existing().title
+          && incoming().category == existing().category
+          && incoming().colorway == existing().colorway
+          && incoming().priceCents == existing().priceCents
+          && incoming().ownerId == existing().ownerId
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly(['quantity', 'size', 'updatedAt']);
+        allow delete: if isValidId(userId) && isValidId(itemId) && isOwner(userId);
+      }
+
+      // Subcollection: /users/{userId}/wishlist/{productId}
+      match /wishlist/{productId} {
+        allow get: if isValidId(userId) && isValidId(productId) && isOwner(userId);
+        allow list: if isValidId(userId) && isOwner(userId) && existing().ownerId == request.auth.uid;
+        allow create: if isValidId(userId)
+          && isValidId(productId)
+          && isVerified()
+          && isOwner(userId)
+          && isValidWishlistItem(incoming(), productId, userId)
+          && incoming().createdAt == request.time
+          && exists(/databases/$(database)/documents/users/$(userId));
+        allow update: if false;
+        allow delete: if isValidId(userId) && isValidId(productId) && isOwner(userId);
+      }
+    }
+
+    // Collection: /orders/{orderId}
+    match /orders/{orderId} {
+      allow get: if isValidId(orderId) && isSignedIn() && existing().userId == request.auth.uid;
+      allow list: if isSignedIn() && existing().userId == request.auth.uid;
+      allow create: if isValidId(orderId)
+        && isVerified()
+        && isValidOrder(incoming(), orderId)
+        && incoming().status in ['processing', 'confirmed']
+        && incoming().createdAt == request.time
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+      allow update, delete: if false;
+    }
+  }
+}
